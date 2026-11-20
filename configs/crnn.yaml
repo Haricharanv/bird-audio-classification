@@ -1,0 +1,24 @@
+# ==============================================================================
+# CRNN Configuration (CNN Backbone + BiGRU + Attention Pooling + FC)
+# ==============================================================================
+_base_: "configs/base.yaml"
+
+experiment_name: "crnn_resnet34"
+
+model:
+  name: "crnn"
+  backbone: "resnet34"
+  in_chans: 1
+  pretrained: true
+  dropout: 0.3
+  gru_hidden_size: 256
+  gru_layers: 2
+  freeze_epochs: 1
+
+train:
+  epochs: 25
+  batch_size: 32
+  head_lr: 0.001
+  backbone_lr: 0.0002
+  scheduler: "one_cycle"
+

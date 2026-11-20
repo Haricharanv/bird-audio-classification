@@ -1,0 +1,144 @@
+# ==============================================================================
+# Ablation Study Configurations
+# Used by scripts/run_ablations.py to systematically evaluate design choices.
+# ==============================================================================
+
+base_config: "configs/effnet_b0.yaml"
+output_dir: "reports/ablations"
+
+experiments:
+  # ----------------------------------------------------------------------------
+  # 1. Feature Representation Ablations
+  # ----------------------------------------------------------------------------
+  - name: "feat_logmel_baseline"
+    overrides:
+      audio.feature_type: "logmel"
+  - name: "feat_mfcc"
+    overrides:
+      audio.feature_type: "mfcc"
+  - name: "feat_stft"
+    overrides:
+      audio.feature_type: "stft"
+  - name: "feat_pcen"
+    overrides:
+      audio.feature_type: "pcen"
+
+  # ----------------------------------------------------------------------------
+  # 2. Augmentation Ablations (Leave-one-in / Leave-one-out)
+  # ----------------------------------------------------------------------------
+  - name: "aug_none"
+    overrides:
+      augment.waveform.noise_bank_prob: 0.0
+      augment.waveform.gain_prob: 0.0
+      augment.waveform.pitch_shift_prob: 0.0
+      augment.waveform.time_stretch_prob: 0.0
+      augment.waveform.time_shift_prob: 0.0
+      augment.spec.spec_aug_prob: 0.0
+      augment.batch.mixup_prob: 0.0
+  - name: "aug_noise_only"
+    overrides:
+      augment.waveform.noise_bank_prob: 0.7
+      augment.waveform.gain_prob: 0.0
+      augment.waveform.pitch_shift_prob: 0.0
+      augment.waveform.time_stretch_prob: 0.0
+      augment.spec.spec_aug_prob: 0.0
+      augment.batch.mixup_prob: 0.0
+  - name: "aug_specaug_only"
+    overrides:
+      augment.waveform.noise_bank_prob: 0.0
+      augment.waveform.gain_prob: 0.0
+      augment.waveform.pitch_shift_prob: 0.0
+      augment.waveform.time_stretch_prob: 0.0
+      augment.spec.spec_aug_prob: 0.7
+      augment.batch.mixup_prob: 0.0
+  - name: "aug_mixup_only"
+    overrides:
+      augment.waveform.noise_bank_prob: 0.0
+      augment.waveform.gain_prob: 0.0
+      augment.waveform.pitch_shift_prob: 0.0
+      augment.waveform.time_stretch_prob: 0.0
+      augment.spec.spec_aug_prob: 0.0
+      augment.batch.mixup_prob: 0.5
+      augment.batch.mixup_alpha: 0.4
+  - name: "aug_all"
+    overrides:
+      augment.waveform.noise_bank_prob: 0.5
+      augment.waveform.gain_prob: 0.5
+      augment.waveform.pitch_shift_prob: 0.2
+      augment.waveform.time_stretch_prob: 0.2
+      augment.spec.spec_aug_prob: 0.5
+      augment.batch.mixup_prob: 0.5
+
+  # ----------------------------------------------------------------------------
+  # 3. Pretraining vs Scratch
+  # ----------------------------------------------------------------------------
+  - name: "pretrain_true"
+    overrides:
+      model.pretrained: true
+  - name: "pretrain_scratch"
+    overrides:
+      model.pretrained: false
+      model.freeze_epochs: 0
+
+  # ----------------------------------------------------------------------------
+  # 4. Loss Function Ablations
+  # ----------------------------------------------------------------------------
+  - name: "loss_ce_smoothed"
+    overrides:
+      train.loss: "cross_entropy"
+      train.label_smoothing: 0.05
+  - name: "loss_ce_unsmoothed"
+    overrides:
+      train.loss: "cross_entropy"
+      train.label_smoothing: 0.0
+  - name: "loss_weighted_ce"
+    overrides:
+      train.loss: "weighted_ce"
+  - name: "loss_focal"
+    overrides:
+      train.loss: "focal"
+      train.focal_gamma: 2.0
+
+  # ----------------------------------------------------------------------------
+  # 5. Chunk Length Ablations
+  # ----------------------------------------------------------------------------
+  - name: "chunk_3s"
+    overrides:
+      audio.duration_sec: 3.0
+      audio.target_samples: 96000
+      audio.val_hop_sec: 1.5
+  - name: "chunk_5s_default"
+    overrides:
+      audio.duration_sec: 5.0
+      audio.target_samples: 160000
+      audio.val_hop_sec: 2.5
+  - name: "chunk_10s"
+    overrides:
+      audio.duration_sec: 10.0
+      audio.target_samples: 320000
+      audio.val_hop_sec: 5.0
+
+  # ----------------------------------------------------------------------------
+  # 6. Model Architectures
+  # ----------------------------------------------------------------------------
+  - name: "arch_baseline_cnn"
+    overrides:
+      model.name: "baseline_cnn"
+  - name: "arch_effnet_b0"
+    overrides:
+      model.name: "timm_cnn"
+      model.backbone: "efficientnet_b0"
+  - name: "arch_resnet34"
+    overrides:
+      model.name: "timm_cnn"
+      model.backbone: "resnet34"
+  - name: "arch_crnn_resnet34"
+    overrides:
+      model.name: "crnn"
+      model.backbone: "resnet34"
+  - name: "arch_ast"
+    overrides:
+      model.name: "ast"
+      train.batch_size: 16
+      train.gradient_accumulation_steps: 2
+

@@ -1,0 +1,35 @@
+# ==============================================================================
+# Audio Spectrogram Transformer (AST) Configuration
+# ==============================================================================
+_base_: "configs/base.yaml"
+
+experiment_name: "ast_transformer"
+
+model:
+  name: "ast"
+  hf_model_id: "MIT/ast-finetuned-audioset-10-10-0.4593"
+  in_chans: 1
+  pretrained: true
+  dropout: 0.2
+  gradient_checkpointing: true
+  freeze_epochs: 1
+
+audio:
+  # AST expects 128 mel bins and standardizes to AudioSet mean/std
+  feature_type: "logmel"
+  n_fft: 1024
+  hop_length: 320
+  n_mels: 128
+  fmin: 20.0
+  fmax: 16000.0
+
+train:
+  epochs: 15
+  batch_size: 16                 # Reduced batch size for transformer memory footprint
+  gradient_accumulation_steps: 2  # Effective batch size 32
+  head_lr: 0.0005
+  backbone_lr: 0.00005
+  ast_backbone_lr: 0.00005
+  scheduler: "cosine"
+  warmup_epochs: 2
+

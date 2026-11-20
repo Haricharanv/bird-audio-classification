@@ -1,0 +1,21 @@
+# ==============================================================================
+# Baseline CNN Configuration (4-block Conv-BN-ReLU-Pool + GlobalPool + FC)
+# ==============================================================================
+_base_: "configs/base.yaml"
+
+experiment_name: "baseline_cnn"
+
+model:
+  name: "baseline_cnn"
+  in_chans: 1
+  dropout: 0.2
+  freeze_epochs: 0
+
+train:
+  epochs: 20
+  batch_size: 32
+  head_lr: 0.001
+  backbone_lr: 0.001
+  loss: "cross_entropy"
+  label_smoothing: 0.05
+

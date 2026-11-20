@@ -1,0 +1,152 @@
+# ==============================================================================
+# Base Configuration for Bird Species Classification (BirdCLEF+ 2025)
+# ==============================================================================
+
+project_name: "bird-audio-classification"
+experiment_name: "base"
+seed: 42
+deterministic: true
+debug: false
+task: "multiclass"  # "multiclass" | "multilabel"
+
+# ------------------------------------------------------------------------------
+# System & Compute
+# ------------------------------------------------------------------------------
+system:
+  device: "auto"          # "auto" | "cuda" | "cpu" | "mps"
+  num_workers: 4
+  pin_memory: true
+  mixed_precision: "fp16" # "fp16" | "bf16" | "no"
+
+# ------------------------------------------------------------------------------
+# Data & Paths
+# ------------------------------------------------------------------------------
+data:
+  # Path configurable; raw dataset is read-only
+  raw_dir: "/kaggle/input/birdclef-2025"
+  cache_dir: "/kaggle/working/cache"
+  metadata_dir: "data/metadata"
+  noise_bank_path: "data/noise/noise_bank.npy"
+  reports_dir: "reports"
+  
+  # Filtering
+  taxa_filter: ["Aves"]   # List of class_name to keep; empty list [] keeps all 206 species
+  min_files_per_species: 10
+  min_rating: 0.0         # Applies strictly to collection == 'XC'; iNat and CSA are retained
+  max_chunks_per_species: 200
+  noise_bank_size: 300
+  max_cache_gb: 18.0      # Safety cap for Kaggle working-dir limit
+  
+  # Split configuration
+  split_by: "filename"    # "filename" | "author"
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  
+  # Debug mode parameters
+  debug_species: 5
+  debug_files_per_species: 20
+
+# ------------------------------------------------------------------------------
+# Audio Representation & GPU Frontend
+# ------------------------------------------------------------------------------
+audio:
+  sample_rate: 32000
+  duration_sec: 5.0
+  target_samples: 160000  # sample_rate * duration_sec
+  val_hop_sec: 2.5        # Sliding window hop for val/test
+  trim_silence: true
+  trim_top_db: 30.0
+  peak_normalize: true
+  
+  # Frontend feature extraction
+  feature_type: "logmel"  # "logmel" | "mfcc" | "pcen" | "stft"
+  n_fft: 1024
+  hop_length: 320
+  win_length: 1024
+  n_mels: 128
+  fmin: 20.0
+  fmax: 16000.0
+  power: 2.0
+  top_db: 80.0
+  n_mfcc: 40
+  standardize: true
+
+# ------------------------------------------------------------------------------
+# Augmentations
+# ------------------------------------------------------------------------------
+augment:
+  waveform:
+    noise_bank_prob: 0.5
+    noise_snr_min_db: 3.0
+    noise_snr_max_db: 20.0
+    gain_prob: 0.5
+    gain_min_db: -6.0
+    gain_max_db: 6.0
+    pitch_shift_prob: 0.2
+    pitch_shift_semitones: 1
+    time_stretch_prob: 0.2
+    time_stretch_min: 0.9
+    time_stretch_max: 1.1
+    time_shift_prob: 0.5
+  spec:
+    spec_aug_prob: 0.5
+    time_mask_num: 2
+    time_mask_max_len: 40
+    freq_mask_num: 2
+    freq_mask_max_len: 24
+  batch:
+    mixup_prob: 0.5
+    mixup_alpha: 0.4
+    cutmix_prob: 0.0
+    cutmix_alpha: 0.4
+
+# ------------------------------------------------------------------------------
+# Model Architecture
+# ------------------------------------------------------------------------------
+model:
+  name: "baseline_cnn"     # "baseline_cnn" | "timm_cnn" | "crnn" | "ast" | "panns_cnn14" | "wav2vec2" | "ensemble"
+  backbone: "resnet34"     # Backbone name for timm_cnn and crnn
+  in_chans: 1
+  num_classes: 206         # Inferred dynamically at runtime based on filtered metadata
+  dropout: 0.2
+  pretrained: true
+  freeze_epochs: 1         # Freeze backbone weights for initial warmup
+
+# ------------------------------------------------------------------------------
+# Training
+# ------------------------------------------------------------------------------
+train:
+  batch_size: 32
+  epochs: 25
+  gradient_accumulation_steps: 1
+  max_grad_norm: 1.0
+  loss: "cross_entropy"    # "cross_entropy" | "weighted_ce" | "focal" | "bce"
+  label_smoothing: 0.05
+  focal_gamma: 2.0
+  use_weighted_sampler: false
+  
+  # Optimization
+  optimizer: "adamw"
+  weight_decay: 0.01
+  head_lr: 0.001
+  backbone_lr: 0.0002
+  ast_backbone_lr: 0.00005
+  
+  # Scheduling
+  scheduler: "one_cycle"   # "one_cycle" | "cosine"
+  warmup_epochs: 2
+  early_stopping_patience: 7
+  monitor_metric: "val_macro_f1"
+  monitor_mode: "max"
+  resume_checkpoint: null
+
+# ------------------------------------------------------------------------------
+# Logging & Artifacts
+# ------------------------------------------------------------------------------
+logging:
+  wandb: false
+  wandb_project: "birdclef-2025"
+  tensorboard: true
+  log_interval_steps: 10
+

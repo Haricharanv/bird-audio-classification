@@ -1,0 +1,22 @@
+# ==============================================================================
+# EfficientNet-B0 Pretrained Configuration (timm Backbone)
+# ==============================================================================
+_base_: "configs/base.yaml"
+
+experiment_name: "effnet_b0"
+
+model:
+  name: "timm_cnn"
+  backbone: "efficientnet_b0"
+  in_chans: 1
+  pretrained: true
+  dropout: 0.3
+  freeze_epochs: 1
+
+train:
+  epochs: 25
+  batch_size: 32
+  head_lr: 0.001
+  backbone_lr: 0.0002
+  scheduler: "one_cycle"
+

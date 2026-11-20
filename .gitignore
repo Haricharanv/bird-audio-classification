@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Caches and large binary data
+data/cache/
+data/noise/*.npy
+*.npy
+*.npz
+
+# Model checkpoints & runs
+runs/
+*.pt
+*.pth
+*.ckpt
+
+# Environment & IDE
+.env
+.venv
+env/
+venv/
+ENV/
+.idea/
+.vscode/
+.DS_Store
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# LaTeX compilation auxiliary files
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+reports/pdf_build/*.aux
+reports/pdf_build/*.log
+reports/pdf_build/*.out
+
+# Retain compiled PDF reports and report figures
+!reports/BirdCLEF_2025_Technical_Report.pdf
+!reports/pdf_build/report.pdf
+!reports/domain_shift/*.png
+!reports/pdf_build/*.png
