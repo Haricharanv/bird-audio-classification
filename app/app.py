@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import soundfile as sf
 import torch
 
@@ -30,6 +31,55 @@ logger = get_logger("gradio_app")
 MODEL_CACHE: Dict[str, Any] = {}
 
 
+def load_species_display_names(
+    cfg: Config,
+    class_names: list[str],
+    ckpt_dir: Optional[Path] = None,
+) -> Tuple[list[str], list[str]]:
+    """Map class labels to human-readable Common Name (Scientific Name) via taxonomy.csv if available."""
+    full_names = list(class_names)
+    short_names = list(class_names)
+
+    candidate_paths = []
+    if ckpt_dir:
+        candidate_paths.append(ckpt_dir / "taxonomy.csv")
+    raw_dir = getattr(getattr(cfg, "data", None), "raw_dir", None)
+    if raw_dir:
+        raw_path = Path(raw_dir)
+        if not raw_path.is_absolute():
+            raw_path = (PROJECT_ROOT / raw_path).resolve()
+        candidate_paths.append(raw_path / "taxonomy.csv")
+    candidate_paths.extend([
+        PROJECT_ROOT.parent / "data" / "real_birds" / "taxonomy.csv",
+        PROJECT_ROOT / "data" / "metadata_real" / "taxonomy.csv",
+        PROJECT_ROOT / "data" / "metadata" / "taxonomy.csv",
+    ])
+
+    tax_map: Dict[str, Tuple[str, str]] = {}
+    for tax_path in candidate_paths:
+        if tax_path.is_file():
+            try:
+                tax_df = pd.read_csv(tax_path, dtype=str)
+                if "primary_label" in tax_df.columns and "common_name" in tax_df.columns:
+                    for _, row in tax_df.iterrows():
+                        lbl = str(row["primary_label"]).strip()
+                        common = str(row.get("common_name", "")).strip()
+                        sci = str(row.get("scientific_name", "")).strip()
+                        if common and common.lower() != "nan":
+                            display = f"{common} ({sci})" if sci and sci.lower() != "nan" else common
+                            tax_map[lbl] = (display, common)
+                    if tax_map:
+                        break
+            except Exception as e:
+                logger.warning(f"Could not read taxonomy file {tax_path}: {e}")
+
+    for i, lbl in enumerate(class_names):
+        if lbl in tax_map:
+            full_names[i], short_names[i] = tax_map[lbl]
+
+    return full_names, short_names
+
+
 def find_default_checkpoint() -> Optional[Path]:
     """Search for the most recent checkpoint in runs/."""
     runs_dir = PROJECT_ROOT / "runs"
@@ -43,7 +93,7 @@ def find_default_checkpoint() -> Optional[Path]:
 def get_model_and_classes() -> Tuple[torch.nn.Module, list[str], torch.device]:
     """Load and cache model, species mapping, and device."""
     if "model" in MODEL_CACHE:
-        return MODEL_CACHE["model"], MODEL_CACHE["class_names"], MODEL_CACHE["device"]
+        return MODEL_CACHE["model"], MODEL_CACHE["display_names"], MODEL_CACHE["device"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt_env = os.environ.get("CHECKPOINT_PATH")
@@ -67,9 +117,13 @@ def get_model_and_classes() -> Tuple[torch.nn.Module, list[str], torch.device]:
     class_to_idx = ckpt.get("class_to_idx", {})
     idx_to_class = {v: k for k, v in class_to_idx.items()}
     class_names = [idx_to_class[i] for i in range(len(class_to_idx))]
+    display_names, short_names = load_species_display_names(cfg, class_names, ckpt_dir=ckpt_path.parent)
 
     num_classes = len(class_names)
     cfg.model.num_classes = num_classes
+    # Weights are loaded immediately from checkpoint; skip downloading pretrained hub weights.
+    if "model" in cfg:
+        cfg.model.pretrained = False
 
     model = build_model(cfg, num_classes=num_classes)
     load_checkpoint(ckpt_path, model=model, device=device)
@@ -78,10 +132,12 @@ def get_model_and_classes() -> Tuple[torch.nn.Module, list[str], torch.device]:
 
     MODEL_CACHE["model"] = model
     MODEL_CACHE["class_names"] = class_names
+    MODEL_CACHE["display_names"] = display_names
+    MODEL_CACHE["short_names"] = short_names
     MODEL_CACHE["device"] = device
     MODEL_CACHE["cfg"] = cfg
 
-    return model, class_names, device
+    return model, display_names, device
 
 
 def predict_bird_audio(audio_filepath: str) -> Tuple[Dict[str, float], plt.Figure, plt.Figure]:
@@ -97,6 +153,7 @@ def predict_bird_audio(audio_filepath: str) -> Tuple[Dict[str, float], plt.Figur
         return {}, plt.figure(), plt.figure()
 
     model, class_names, device = get_model_and_classes()
+    short_names = MODEL_CACHE.get("short_names", class_names)
     sr = 32000
     window_sec = 5.0
     hop_sec = 2.5
@@ -152,7 +209,7 @@ def predict_bird_audio(audio_filepath: str) -> Tuple[Dict[str, float], plt.Figur
     fig_timeline, ax_timeline = plt.subplots(figsize=(8, 3.5))
     top_per_window_idx = np.argmax(probs, axis=1)
     top_per_window_conf = np.max(probs, axis=1)
-    top_per_window_labels = [class_names[idx] for idx in top_per_window_idx]
+    top_per_window_labels = [short_names[idx] for idx in top_per_window_idx]
 
     ax_timeline.plot(timestamps, top_per_window_conf, marker="o", color="#1f77b4", linewidth=2)
     ax_timeline.fill_between(timestamps, top_per_window_conf, alpha=0.15, color="#1f77b4")
@@ -179,7 +236,13 @@ def predict_bird_audio(audio_filepath: str) -> Tuple[Dict[str, float], plt.Figur
 
 
 def create_demo_audio_examples(examples_dir: Path) -> list[list[str]]:
-    """Create synthetic audio clips if no example files exist."""
+    """Return real held-out test clips if available, else synthetic demo clips."""
+    real_demo_dir = PROJECT_ROOT.parent / "data" / "real_birds" / "demo_examples"
+    if real_demo_dir.is_dir():
+        real_files = sorted(real_demo_dir.glob("*.ogg"))
+        if real_files:
+            return [[str(p)] for p in real_files]
+
     examples_dir.mkdir(parents=True, exist_ok=True)
     ex1 = examples_dir / "sample_bird_chirp_1.ogg"
     ex2 = examples_dir / "sample_bird_chirp_2.ogg"
@@ -240,4 +303,7 @@ def build_app():
 
 if __name__ == "__main__":
     demo = build_app()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    real_birds_dir = PROJECT_ROOT.parent / "data" / "real_birds"
+    allowed = [str(real_birds_dir)] if real_birds_dir.is_dir() else None
+    share_flag = os.environ.get("GRADIO_SHARE", "0").strip().lower() in ("1", "true", "yes")
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=share_flag, allowed_paths=allowed)

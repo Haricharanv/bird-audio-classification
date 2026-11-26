@@ -37,6 +37,15 @@ class AudioFrontend(nn.Module):
         std = x.std(dim=(-2, -1), keepdim=True)
         return (x - mean) / (std + 1e-6)
 
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run STFT/Mel feature extraction in float32 to prevent fp16 overflow under AMP."""
+        device_type = x.device.type if x.device.type in ("cuda", "cpu", "mps") else "cpu"
+        with torch.amp.autocast(device_type=device_type, enabled=False):
+            return self._extract_features(self._format_input(x))
+
 
 class MelSpectrogramFrontend(AudioFrontend):
     """GPU-compatible Log-Mel Spectrogram extraction module."""
@@ -71,16 +80,15 @@ class MelSpectrogramFrontend(AudioFrontend):
         )
         self.amp_to_db = T.AmplitudeToDB(top_db=top_db)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extract Log-Mel spectrogram.
         
         Args:
-            x: Raw audio waveform (B, T) or (B, 1, T).
+            x: Raw audio waveform (B, T) float32.
             
         Returns:
             Normalized spectrogram tensor (B, 1, n_mels, time_steps).
         """
-        x = self._format_input(x)
         mel = self.mel_transform(x)          # (B, n_mels, time_steps)
         log_mel = self.amp_to_db(mel)        # (B, n_mels, time_steps)
         log_mel = log_mel.unsqueeze(1)       # (B, 1, n_mels, time_steps)
@@ -122,16 +130,15 @@ class MFCCFrontend(AudioFrontend):
             melkwargs=melkwargs,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extract MFCCs.
         
         Args:
-            x: Raw audio waveform (B, T).
+            x: Raw audio waveform (B, T) float32.
             
         Returns:
             Normalized MFCC tensor (B, 1, n_mfcc, time_steps).
         """
-        x = self._format_input(x)
         mfcc = self.mfcc_transform(x)        # (B, n_mfcc, time_steps)
         mfcc = mfcc.unsqueeze(1)             # (B, 1, n_mfcc, time_steps)
         return self._standardize(mfcc)
@@ -155,16 +162,15 @@ class STFTFrontend(AudioFrontend):
         self.top_db = top_db
         self.register_buffer("window", torch.hann_window(win_length))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extract Log Magnitude STFT.
         
         Args:
-            x: Raw audio waveform (B, T).
+            x: Raw audio waveform (B, T) float32.
             
         Returns:
             Normalized Log-STFT tensor (B, 1, n_fft // 2 + 1, time_steps).
         """
-        x = self._format_input(x)
         stft_c = torch.stft(
             x,
             n_fft=self.n_fft,
@@ -230,16 +236,15 @@ class PCENFrontend(AudioFrontend):
         self.r = r
         self.eps = eps
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extract PCEN spectrogram.
         
         Args:
-            x: Raw audio waveform (B, T).
+            x: Raw audio waveform (B, T) float32.
             
         Returns:
             Normalized PCEN tensor (B, 1, n_mels, time_steps).
         """
-        x = self._format_input(x)
         # Power mel spectrogram: (B, n_mels, T)
         E = self.mel_transform(x)
         

@@ -1,0 +1,45 @@
+# ==============================================================================
+# EfficientNet-B0 Configuration for Real iNaturalist Bird Audio (CPU-Friendly)
+# ==============================================================================
+_base_: "configs/effnet_b0.yaml"
+
+experiment_name: "effnet_b0_real"
+debug: false
+
+system:
+  device: "auto"
+  num_workers: 0
+  pin_memory: false
+  mixed_precision: "no"
+
+data:
+  raw_dir: "../data/real_birds"
+  cache_dir: "data/cache_real"
+  metadata_dir: "data/metadata_real"
+  noise_bank_path: "data/noise/noise_bank_real.npy"
+  min_files_per_species: 10
+  max_chunks_per_species: 100
+  noise_bank_size: 100
+  split_by: "filename"
+
+augment:
+  waveform:
+    pitch_shift_prob: 0.0
+    time_stretch_prob: 0.0
+
+model:
+  name: "timm_cnn"
+  backbone: "efficientnet_b0"
+  in_chans: 1
+  pretrained: true
+  dropout: 0.3
+  freeze_epochs: 1
+
+train:
+  epochs: 12
+  batch_size: 16
+  head_lr: 0.001
+  backbone_lr: 0.0003
+  scheduler: "one_cycle"
+  warmup_epochs: 2
+  early_stopping_patience: 5

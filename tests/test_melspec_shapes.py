@@ -114,3 +114,15 @@ def test_build_frontend_from_config():
     out = frontend(x)
     assert out.shape == (1, 1, 128, 501)
 
+
+def test_frontends_no_nan_under_autocast():
+    """Verify loud tonal waveforms stay finite and float32 under AMP autocast."""
+    t = torch.linspace(0, 5.0, 160000)
+    tone = torch.sin(2 * torch.pi * 2500.0 * t).unsqueeze(0)  # Peak amplitude 1.0
+    for feat_type in ("logmel", "mfcc", "stft", "pcen"):
+        frontend = build_frontend(Config({"audio": {"feature_type": feat_type}}))
+        with torch.amp.autocast("cpu", dtype=torch.bfloat16):
+            out = frontend(tone)
+        assert out.dtype == torch.float32
+        assert torch.isfinite(out).all(), f"Non-finite output for {feat_type}"
+
