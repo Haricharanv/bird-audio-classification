@@ -6,6 +6,10 @@ __pycache__/
 
 # Caches and large binary data
 data/cache/
+data/cache*/
+data/metadata_indian/
+data/metadata_indian*/
+data/metadata_india_top*/
 data/noise/*.npy
 *.npy
 *.npz

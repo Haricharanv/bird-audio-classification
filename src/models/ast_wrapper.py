@@ -71,6 +71,7 @@ class ASTAudioClassifier(nn.Module):
         )
 
         hf_id = str(getattr(cfg.model, "hf_model_id", "MIT/ast-finetuned-audioset-10-10-0.4593"))
+        pretrained = bool(getattr(cfg.model, "pretrained", True))
         dropout_p = float(getattr(cfg.model, "dropout", 0.2))
         grad_ckpt = bool(getattr(cfg.model, "gradient_checkpointing", True))
 
@@ -79,15 +80,17 @@ class ASTAudioClassifier(nn.Module):
         self.is_hf = False
         try:
             from transformers import ASTConfig, ASTModel
-            # Try loading pretrained weights or config
-            try:
-                self.ast = ASTModel.from_pretrained(hf_id)
-                self.is_hf = True
-                logger.info(f"Loaded pretrained AST model: {hf_id}")
-            except Exception as e:
-                logger.warning(f"Failed to load weights for {hf_id} ({e}); instantiating from ASTConfig.")
-                config = ASTConfig()
-                self.ast = ASTModel(config)
+            if pretrained:
+                try:
+                    self.ast = ASTModel.from_pretrained(hf_id)
+                    self.is_hf = True
+                    logger.info(f"Loaded pretrained AST model: {hf_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to load weights for {hf_id} ({e}); instantiating from ASTConfig.")
+                    self.ast = ASTModel(ASTConfig())
+                    self.is_hf = True
+            else:
+                self.ast = ASTModel(ASTConfig())
                 self.is_hf = True
 
             if grad_ckpt and hasattr(self.ast, "gradient_checkpointing_enable"):

@@ -46,6 +46,7 @@ def main() -> None:
 
     num_classes = len(class_to_idx)
     cfg.model.num_classes = num_classes
+    cfg.model.pretrained = False
 
     # Load model
     model = build_model(cfg, num_classes=num_classes)

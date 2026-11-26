@@ -17,6 +17,7 @@ from src.data.dataset import BirdDataset
 from src.evaluation.analysis import generate_full_evaluation_report
 from src.evaluation.gradcam import GradCAM
 from src.models.registry import build_model
+from src.utils.audio_inference import aggregate_window_probs
 from src.utils.config import load_config
 from src.utils.io import load_checkpoint
 from src.utils.logging import format_epoch_table, get_logger
@@ -60,8 +61,9 @@ def evaluate_recording_sliding_windows(
             else:
                 probs = torch.softmax(logits, dim=-1).cpu().numpy()
 
-            # Average probabilities across all windows in the recording
-            recording_prob = np.mean(probs, axis=0)
+            # Aggregate probabilities across windows weighted toward active calls
+            windows_np = sample["waveform"].numpy()
+            recording_prob = aggregate_window_probs(probs, windows=windows_np, mode="confidence_energy")
             all_preds.append(recording_prob)
             all_targets.append(target)
 
@@ -94,6 +96,7 @@ def main() -> None:
 
     num_classes = len(class_to_idx)
     cfg.model.num_classes = num_classes
+    cfg.model.pretrained = False
 
     # Build model and load weights
     model = build_model(cfg, num_classes=num_classes)

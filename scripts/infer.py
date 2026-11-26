@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.preprocess import load_audio
 from src.models.ensemble import EnsembleModel, load_ensemble_from_checkpoints
 from src.models.registry import build_model
+from src.utils.audio_inference import aggregate_window_probs, slice_sliding_windows
 from src.utils.config import load_config
 from src.utils.io import load_checkpoint
 from src.utils.logging import format_epoch_table, get_logger
@@ -51,29 +52,13 @@ def predict_audio_file(
         Dictionary with recording predictions, top species, and window timeline.
     """
     waveform = load_audio(audio_path, target_sr=sample_rate, trim_silence=False)
-    total_len = len(waveform)
-    window_samples = int(window_sec * sample_rate)
-    hop_samples = int(hop_sec * sample_rate)
-
-    if total_len < window_samples:
-        # Repeat-pad short audio
-        repeats = int(np.ceil(window_samples / max(1, total_len)))
-        windows = [np.tile(waveform, repeats)[:window_samples]]
-        timestamps = [0.0]
-    else:
-        windows = []
-        timestamps = []
-        for start in range(0, total_len - window_samples + 1, hop_samples):
-            windows.append(waveform[start : start + window_samples])
-            timestamps.append(start / sample_rate)
-
-        # Include tail window if needed
-        tail_start = total_len - window_samples
-        if tail_start > 0 and (total_len - window_samples) % hop_samples != 0:
-            windows.append(waveform[tail_start:total_len])
-            timestamps.append(tail_start / sample_rate)
-
-    windows_tensor = torch.from_numpy(np.stack(windows, axis=0)).float().to(device)
+    windows_np, timestamps = slice_sliding_windows(
+        waveform,
+        sample_rate=sample_rate,
+        window_sec=window_sec,
+        hop_sec=hop_sec,
+    )
+    windows_tensor = torch.from_numpy(windows_np).float().to(device)
 
     model.eval()
     with torch.no_grad():
@@ -86,8 +71,8 @@ def predict_audio_file(
             else:
                 window_probs = torch.softmax(out, dim=-1).cpu().numpy()
 
-    # Average probabilities over sliding windows
-    mean_probs = np.mean(window_probs, axis=0)  # (num_classes,)
+    # Aggregate probabilities over sliding windows weighted toward active vocalizations
+    mean_probs = aggregate_window_probs(window_probs, windows=windows_np, mode="confidence_energy")
     top_indices = np.argsort(mean_probs)[::-1]
 
     # Timeline per-window top predictions
@@ -131,11 +116,16 @@ def main() -> None:
         first_ckpt = torch.load(args.ensemble_checkpoints[0], map_location="cpu")
         class_to_idx = first_ckpt.get("class_to_idx", {})
     elif args.checkpoint:
+        from src.utils.config import Config
         logger.info(f"Loading single checkpoint: {args.checkpoint}...")
         ckpt = torch.load(args.checkpoint, map_location=device)
         class_to_idx = ckpt.get("class_to_idx", {})
-        num_classes = len(class_to_idx) or int(getattr(cfg.model, "num_classes", 206))
-        model = build_model(cfg, num_classes=num_classes)
+        ckpt_cfg = ckpt.get("config")
+        model_cfg = Config(ckpt_cfg) if isinstance(ckpt_cfg, dict) and ckpt_cfg else cfg
+        if "model" in model_cfg:
+            model_cfg.model.pretrained = False
+        num_classes = len(class_to_idx) or int(getattr(model_cfg.model, "num_classes", 206))
+        model = build_model(model_cfg, num_classes=num_classes)
         load_checkpoint(args.checkpoint, model=model, device=device)
     else:
         raise ValueError("Must provide either --checkpoint or --ensemble_checkpoints!")

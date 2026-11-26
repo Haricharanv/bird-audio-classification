@@ -298,9 +298,14 @@ def create_dataloaders(
     shuffle = True
 
     if use_weighted_sampler:
-        class_counts = train_df["primary_label"].value_counts()
+        label_series = (
+            train_dataset.cached_chunks["primary_label"]
+            if train_dataset.has_cached_chunks
+            else train_df["primary_label"]
+        )
+        class_counts = label_series.value_counts()
         weights_per_class = {sp: 1.0 / np.sqrt(count) for sp, count in class_counts.items()}
-        sample_weights = [weights_per_class[sp] for sp in train_df["primary_label"]]
+        sample_weights = [weights_per_class[sp] for sp in label_series]
         sampler = WeightedRandomSampler(
             weights=sample_weights,
             num_samples=len(sample_weights),

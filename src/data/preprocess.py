@@ -87,7 +87,7 @@ def load_audio(
 
     # Resample if audio sample rate differs from target
     if sr != target_sr:
-        waveform = librosa.resample(waveform, orig_sr=sr, target_sr=target_sr, res_type="kaiser_fast")
+        waveform = librosa.resample(waveform, orig_sr=sr, target_sr=target_sr, res_type="soxr_hq")
 
     # Trim leading and trailing silence
     if trim_silence and len(waveform) > 0:
@@ -303,7 +303,9 @@ def cache_energy_chunks(
     max_cache_gb = float(getattr(cfg.data, "max_cache_gb", 18.0))
 
     # Pre-estimate storage: (num_species * max_chunks * target_samples * 2 bytes [float16])
-    num_species = df["primary_label"].nunique()
+    # Only cache chunks for training split so val/test recordings do not consume the chunk cap.
+    work_df = df[df["split"] == "train"] if "split" in df.columns else df
+    num_species = work_df["primary_label"].nunique()
     bytes_per_chunk = target_samples * 2  # float16 is 2 bytes
     estimated_total_bytes = num_species * max_chunks_per_species * bytes_per_chunk
     estimated_gb = estimated_total_bytes / (1024.0**3)
@@ -314,7 +316,7 @@ def cache_energy_chunks(
     chunk_records: List[Dict[str, Any]] = []
 
     # Group recordings by species to enforce max_chunks_per_species
-    for species, group in df.groupby("primary_label"):
+    for species, group in work_df.groupby("primary_label"):
         species_cache_dir = cache_dir / str(species)
         species_cache_dir.mkdir(parents=True, exist_ok=True)
         species_chunks: List[Tuple[str, int, np.ndarray, float, Dict[str, Any]]] = []

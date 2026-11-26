@@ -24,5 +24,7 @@ wandb>=0.15.0
 
 # Application & Testing
 gradio>=4.0.0
+birdnet>=1.6.0
+ai-edge-litert>=2.0.2
 pytest>=7.0.0
 

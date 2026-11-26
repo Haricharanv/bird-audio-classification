@@ -61,6 +61,7 @@ def load_ensemble_from_checkpoints(
         Instantiated and weighted EnsembleModel.
     """
     from src.models.registry import build_model
+    from src.utils.config import Config
 
     models = []
     is_multilabel = str(getattr(cfg, "task", "multiclass")).lower() == "multilabel"
@@ -69,8 +70,11 @@ def load_ensemble_from_checkpoints(
         path = Path(cp_path)
         logger.info(f"Loading checkpoint for ensemble: {path.name}...")
         ckpt = torch.load(path, map_location=device)
-        model_cfg = ckpt.get("config", cfg)
-        num_classes = len(ckpt.get("class_to_idx", {})) or int(getattr(cfg.model, "num_classes", 206))
+        ckpt_cfg = ckpt.get("config")
+        model_cfg = Config(ckpt_cfg) if isinstance(ckpt_cfg, dict) and ckpt_cfg else cfg
+        if "model" in model_cfg:
+            model_cfg.model.pretrained = False
+        num_classes = len(ckpt.get("class_to_idx", {})) or int(getattr(model_cfg.model, "num_classes", 206))
         
         model = build_model(model_cfg, num_classes=num_classes)
         raw_model = model.module if hasattr(model, "module") else model
